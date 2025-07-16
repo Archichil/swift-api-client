@@ -11,7 +11,6 @@ public extension APIClient {
     /// struct MyAPISpec: APIClient.APISpecification {
     ///     var endpoint: String { "/my-endpoint" }
     ///     var method: HttpMethod { .get }
-    ///     var returnType: DecodableType.Type { MyResponseType.self }
     ///     var headers: [String: String]? { ["Authorization": "Bearer token"] }
     ///     var body: Data? { nil }
     /// }
@@ -19,16 +18,11 @@ public extension APIClient {
     protocol APISpecification {
         /// The API endpoint for the request.
         ///
-        /// This is the path that will be appended to the base URL of the ``APIClient.swift``.
+        /// This is the path that will be appended to the base URL of the ``APIClient``.
         var endpoint: String { get }
 
         /// The HTTP method for the request.
         var method: HttpMethod { get }
-
-        /// The expected return type for the response.
-        ///
-        /// This type must conform to `Decodable` and will be used to decode the response data.
-        var returnType: DecodableType.Type { get }
 
         /// The headers to include in the request.
         ///
