@@ -1,39 +1,85 @@
 import Foundation
 
-/// A client for making network requests to an API.
+/// A robust networking client for making API requests with automatic response handling.
 ///
-/// This struct provides methods to send requests to an API and handle responses.
-/// It supports decoding responses into `Decodable` types and handles common network errors.
+/// `APIClient` provides a high-level interface for performing HTTP requests to REST APIs.
+/// It handles URL construction, request configuration, response validation, and automatic
+/// JSON decoding with comprehensive error handling.
 ///
-/// ## Example
+/// ## Key Features
+/// - Automatic JSON decoding with snake_case to camelCase conversion
+/// - Built-in response validation and error handling
+/// - Support for raw `Data` responses when needed
+/// - Configurable URL session and JSON decoder
+/// - Type-safe request/response handling
+///
+/// ## Basic Usage
 /// ```swift
-/// let baseURL = URL(string: "https://api.example.com")!
-/// let apiClient = APIClient(baseURL: baseURL)
+/// let client = APIClient(baseURL: URL(string: "https://api.example.com")!)
 ///
-/// Task {
-///     do {
-///         let response = try await apiClient.sendRequest(someAPISpec)
-///         print(response)
-///     } catch {
-///         print("Error: \(error)")
-///     }
+/// // Define your API specification
+/// let userSpec = APISpecification(
+///     endpoint: "/users/123",
+///     method: .GET,
+///     headers: ["Authorization": "Bearer token"]
+/// )
+///
+/// // Make the request
+/// let user: User = try await client.sendRequest(userSpec)
+/// ```
+///
+/// ## Error Handling
+/// ```swift
+/// do {
+///     let data: UserResponse = try await client.sendRequest(spec)
+///     // Handle success
+/// } catch NetworkError.requestFailed(let statusCode) {
+///     print("Request failed with status: \(statusCode)")
+/// } catch NetworkError.decodingFailed(let error) {
+///     print("Failed to decode response: \(error)")
+/// } catch {
+///     print("Unexpected error: \(error)")
 /// }
 /// ```
 public struct APIClient {
-    /// The base URL for the API.
+    /// The base URL for all API requests.
+    ///
+    /// All endpoint paths in `APISpecification` will be resolved relative to this URL.
     private let baseURL: URL
 
-    /// The URL session used to perform network requests.
+    /// The URL session used for network requests.
+    ///
+    /// Defaults to `URLSession.shared` but can be customized for testing or
+    /// specific configuration requirements.
     private let urlSession: URLSession
     
-    /// JSONDecoder used to decode response data.
+    /// The JSON decoder for response data.
+    ///
+    /// Configured by default to convert snake_case keys to camelCase to match
+    /// Swift naming conventions.
     private let decoder: JSONDecoder
 
-    /// Initializes a new `APIClient` instance.
+    /// Creates a new API client instance.
     ///
     /// - Parameters:
-    ///   - baseURL: The base URL for the API.
-    ///   - urlSession: The URL session to use for network requests. Defaults to `URLSession.shared`.
+    ///   - baseURL: The base URL for all API requests. Endpoint paths will be appended to this URL.
+    ///   - urlSession: The URL session for network requests. Defaults to `URLSession.shared`.
+    ///   - decoder: The JSON decoder for responses. Defaults to a new `JSONDecoder` with snake_case conversion.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Basic initialization
+    /// let client = APIClient(baseURL: URL(string: "https://api.example.com")!)
+    ///
+    /// // Custom configuration
+    /// let customDecoder = JSONDecoder()
+    /// customDecoder.dateDecodingStrategy = .iso8601
+    /// let client = APIClient(
+    ///     baseURL: baseURL,
+    ///     urlSession: .shared,
+    ///     decoder: customDecoder
+    /// )
+    /// ```
     public init(
         baseURL: URL,
         urlSession: URLSession = URLSession.shared,
@@ -45,18 +91,42 @@ public struct APIClient {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
     }
 
-    /// Sends a request to the API based on the provided specification.
+    /// Executes an API request and returns the decoded response.
     ///
-    /// This method constructs a URL request from the `APISpec`, sends it, and decodes the response into the specified `Decodable` type.
+    /// This method performs the complete request lifecycle:
+    /// 1. Constructs the full URL from the base URL and specification endpoint
+    /// 2. Creates and configures the HTTP request with headers, method, and body
+    /// 3. Executes the network request with a 30-second timeout
+    /// 4. Validates the HTTP response status code (200-299 range)
+    /// 5. Decodes the response data into the specified type
     ///
-    /// - Parameter apiSpec: The API specification that defines the request to be sent.
-    /// - Returns: A decoded response of type `DecodableType`.
-    /// - Throws: An error if the request fails, the response is invalid, or decoding fails.
+    /// - Parameter specification: The API specification defining the request details
+    ///   (endpoint, HTTP method, headers, and body).
+    /// - Returns: The decoded response of the specified `Decodable` type.
+    /// - Throws:
+    ///   - `NetworkError.invalidURL` if the endpoint URL cannot be constructed
+    ///   - `NetworkError.invalidResponse` if the response is not an HTTP response
+    ///   - `NetworkError.requestFailed(statusCode:)` for non-2xx HTTP status codes
+    ///   - `NetworkError.decodingFailed(_:)` if JSON decoding fails
+    ///   - `NetworkError.unknown(_:)` for other unexpected errors
     ///
-    /// ## Example
+    /// ## Examples
     /// ```swift
-    /// let response = try await apiClient.sendRequest(someAPISpec)
+    /// // Decode JSON response
+    /// let users: [User] = try await client.sendRequest(getUsersSpec)
+    ///
+    /// // Get raw data (bypasses JSON decoding)
+    /// let imageData: Data = try await client.sendRequest(getImageSpec)
+    ///
+    /// // Handle specific response types
+    /// let response: APIResponse<User> = try await client.sendRequest(createUserSpec)
     /// ```
+    ///
+    /// ## Special Behavior
+    /// - When the expected return type is `Data`, the method returns the raw response
+    ///   data without attempting JSON decoding.
+    /// - All requests have a 30-second timeout and use protocol cache policy.
+    /// - JSON decoding automatically converts snake_case keys to camelCase.
     public func sendRequest<T: Decodable>(_ specification: APISpecification) async throws -> T {
         guard let url = URL(string: specification.endpoint, relativeTo: baseURL) else {
             throw NetworkError.invalidURL
@@ -86,14 +156,16 @@ public struct APIClient {
         }
     }
 
-    /// Validates the HTTP response from the API.
+    /// Validates the HTTP response status and type.
     ///
-    /// This method checks if the response is a valid `HTTPURLResponse` and if the status code is within the success range (200-299).
+    /// Ensures the response is a valid `HTTPURLResponse` and that the status code
+    /// indicates success (200-299 range). This method is called internally by
+    /// `sendRequest(_:)` to validate responses before attempting to decode them.
     ///
-    /// - Parameters:
-    ///   - data: The data returned by the API.
-    ///   - response: The URL response returned by the API.
-    /// - Throws: An error if the response is invalid or the status code indicates a failure.
+    /// - Parameter response: The URL response to validate.
+    /// - Throws:
+    ///   - `NetworkError.invalidResponse` if the response is not an `HTTPURLResponse`
+    ///   - `NetworkError.requestFailed(statusCode:)` if the status code is outside the 200-299 range
     private func handleResponse(response: URLResponse) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
