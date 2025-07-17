@@ -1,3 +1,5 @@
+import Foundation
+
 /// An enumeration representing errors that can occur during network operations.
 ///
 /// This enum defines common errors that may arise when making network requests,
@@ -15,7 +17,7 @@
 ///     print("An unexpected error occurred: \(error)")
 /// }
 /// ```
-public enum NetworkError: Error {
+public enum NetworkError: Error, LocalizedError {
     /// Indicates that the URL is invalid.
     ///
     /// This error occurs when the URL cannot be constructed from the provided string.
@@ -34,5 +36,17 @@ public enum NetworkError: Error {
     /// Indicates that the data conversion failed.
     ///
     /// This error occurs when the response data cannot be decoded into the expected type.
-    case dataConversionFailure
+    case decodingFailed(DecodingError)
+    
+    case unknown(Error)
+    
+    public var errorDescription: String? {
+        switch self {
+        case .invalidURL: return "The URL is invalid."
+        case .invalidResponse: return "Invalid server response."
+        case .requestFailed(let statusCode): return "Request failed with status code \(statusCode)."
+        case .decodingFailed(let error): return "Decoding failed: \(error)"
+        case .unknown(let error): return "Unknown error: \(error)"
+        }
+    }
 }

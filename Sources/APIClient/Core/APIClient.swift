@@ -21,10 +21,13 @@ import Foundation
 /// ```
 public struct APIClient {
     /// The base URL for the API.
-    private var baseURL: URL
+    private let baseURL: URL
 
     /// The URL session used to perform network requests.
-    private var urlSession: URLSession
+    private let urlSession: URLSession
+    
+    /// JSONDecoder used to decode response data.
+    private let decoder: JSONDecoder
 
     /// Initializes a new `APIClient` instance.
     ///
@@ -33,10 +36,13 @@ public struct APIClient {
     ///   - urlSession: The URL session to use for network requests. Defaults to `URLSession.shared`.
     public init(
         baseURL: URL,
-        urlSession: URLSession = URLSession.shared
+        urlSession: URLSession = URLSession.shared,
+        decoder: JSONDecoder = JSONDecoder()
     ) {
         self.baseURL = baseURL
         self.urlSession = urlSession
+        self.decoder = decoder
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
     }
 
     /// Sends a request to the API based on the provided specification.
@@ -51,8 +57,8 @@ public struct APIClient {
     /// ```swift
     /// let response = try await apiClient.sendRequest(someAPISpec)
     /// ```
-    public func sendRequest(_ apiSpec: APISpecification) async throws -> DecodableType {
-        guard let url = URL(string: baseURL.absoluteString + apiSpec.endpoint) else {
+    public func sendRequest<T: Decodable>(_ specification: APISpecification) async throws -> T {
+        guard let url = URL(string: specification.endpoint, relativeTo: baseURL) else {
             throw NetworkError.invalidURL
         }
         var request = URLRequest(
@@ -60,37 +66,23 @@ public struct APIClient {
             cachePolicy: .useProtocolCachePolicy,
             timeoutInterval: TimeInterval(floatLiteral: 30.0)
         )
-        request.httpMethod = apiSpec.method.rawValue
-        request.httpBody = apiSpec.body
-        request.allHTTPHeaderFields = apiSpec.headers
+        request.httpMethod = specification.method.rawValue
+        request.httpBody = specification.body
+        request.allHTTPHeaderFields = specification.headers
 
-        var responseData: Data? = nil
-        do {
-            let (data, response) = try await urlSession.data(for: request)
-            try handleResponse(data: data, response: response)
-            responseData = data
-        } catch {
-            throw error
+        let (data, response) = try await urlSession.data(for: request)
+        try handleResponse(response: response)
+        
+        if T.self == Data.self, let rawData = data as? T {
+            return rawData
         }
 
-        // Don't have to decode data if it's raw data
-        if apiSpec.returnType == Data.self {
-            return responseData ?? Data()
-        }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
         do {
-            let decodedData = try decoder.decode(
-                apiSpec.returnType,
-                from: responseData!
-            )
-            return decodedData
-        } catch let error as DecodingError {
-            throw error
+            return try decoder.decode(T.self, from: data)
+        } catch let decodingError as DecodingError {
+            throw NetworkError.decodingFailed(decodingError)
         } catch {
-            throw NetworkError.dataConversionFailure
+            throw NetworkError.unknown(error)
         }
     }
 
@@ -102,7 +94,7 @@ public struct APIClient {
     ///   - data: The data returned by the API.
     ///   - response: The URL response returned by the API.
     /// - Throws: An error if the response is invalid or the status code indicates a failure.
-    private func handleResponse(data _: Data, response: URLResponse) throws {
+    private func handleResponse(response: URLResponse) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
         }
