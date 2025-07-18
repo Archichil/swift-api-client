@@ -20,6 +20,11 @@ public extension APIClient {
         ///
         /// This is the path that will be appended to the base URL of the ``APIClient``.
         var endpoint: String { get }
+        
+        /// The query parameters to include in the request.
+        ///
+        /// This is an optional dictionary of query parameter names and their values.
+        var queryParameters: [String: String]? { get }
 
         /// The HTTP method for the request.
         var method: HttpMethod { get }
