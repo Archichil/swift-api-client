@@ -41,7 +41,7 @@ import Foundation
 ///     print("Unexpected error: \(error)")
 /// }
 /// ```
-public struct APIClient {
+public struct APIClient: Sendable {
     /// The base URL for all API requests.
     ///
     /// All endpoint paths in `APISpecification` will be resolved relative to this URL.
@@ -128,9 +128,7 @@ public struct APIClient {
     /// - All requests have a 30-second timeout and use protocol cache policy.
     /// - JSON decoding automatically converts snake_case keys to camelCase.
     public func sendRequest<T: Decodable>(_ specification: APISpecification) async throws -> T {
-        guard let url = URL(string: specification.endpoint, relativeTo: baseURL) else {
-            throw NetworkError.invalidURL
-        }
+        let url = try constructURL(from: specification)
         var request = URLRequest(
             url: url,
             cachePolicy: .useProtocolCachePolicy,
@@ -143,7 +141,8 @@ public struct APIClient {
         let (data, response) = try await urlSession.data(for: request)
         try handleResponse(response: response)
         
-        if T.self == Data.self, let rawData = data as? T {
+        // Raw Data don't have to be decoded
+        if let rawData: T = data as? T {
             return rawData
         }
 
@@ -154,6 +153,36 @@ public struct APIClient {
         } catch {
             throw NetworkError.unknown(error)
         }
+    }
+    
+    /// Constructs the full URL for a request from the specification.
+    ///
+    /// This method handles URL construction with support for query parameters,
+    /// combining the base URL with the endpoint and optional query parameters.
+    ///
+    /// - Parameter specification: The API specification containing endpoint and query parameters
+    /// - Returns: The fully constructed URL for the request
+    /// - Throws: `NetworkError.invalidURL` if the URL cannot be constructed
+    private func constructURL(from specification: APISpecification) throws(NetworkError) -> URL {
+        guard let baseWithEndpoint = URL(string: specification.endpoint, relativeTo: baseURL) else {
+            throw NetworkError.invalidURL
+        }
+        
+        if let queryParameters = specification.queryParameters, !queryParameters.isEmpty {
+            guard var components = URLComponents(url: baseWithEndpoint, resolvingAgainstBaseURL: true) else {
+                throw NetworkError.invalidURL
+            }
+            
+            components.queryItems = queryParameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+            
+            guard let finalURL = components.url else {
+                throw NetworkError.invalidURL
+            }
+            
+            return finalURL
+        }
+        
+        return baseWithEndpoint
     }
 
     /// Validates the HTTP response status and type.
@@ -166,7 +195,7 @@ public struct APIClient {
     /// - Throws:
     ///   - `NetworkError.invalidResponse` if the response is not an `HTTPURLResponse`
     ///   - `NetworkError.requestFailed(statusCode:)` if the status code is outside the 200-299 range
-    private func handleResponse(response: URLResponse) throws {
+    private func handleResponse(response: URLResponse) throws(NetworkError) {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
         }

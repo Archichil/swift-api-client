@@ -7,12 +7,12 @@ let package = Package(
     name: "APIClient",
     platforms: [.iOS(.v13), .macOS(.v10_15)],
     products: [
-        .library(
-            name: "APIClient",
-            targets: ["APIClient"]),
+        .library(name: "APIClient", targets: ["APIClient"]),
     ],
-    targets: [
-        .target(
-            name: "APIClient"),
+    targets: [.target(name: "APIClient",
+                      path: "Source"),
+              .testTarget(name: "APIClientTests",
+                          dependencies: ["APIClient"],
+                          path: "Tests")
     ]
 )
