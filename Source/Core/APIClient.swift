@@ -41,7 +41,7 @@ import Foundation
 ///     print("Unexpected error: \(error)")
 /// }
 /// ```
-public struct APIClient {
+public struct APIClient: Sendable {
     /// The base URL for all API requests.
     ///
     /// All endpoint paths in `APISpecification` will be resolved relative to this URL.
@@ -143,7 +143,8 @@ public struct APIClient {
         let (data, response) = try await urlSession.data(for: request)
         try handleResponse(response: response)
         
-        if T.self == Data.self, let rawData = data as? T {
+        // Raw Data don't have to be decoded
+        if let rawData: T = data as? T {
             return rawData
         }
 
