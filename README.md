@@ -45,7 +45,7 @@ struct GetUserSpec: APIClient.APISpecification {
     
     var endpoint: String { "/users/\(userId)" }
     var method: APIClient.HttpMethod { .get }
-    var returnType: DecodableType.Type { User.self }
+    var queryParameters: [String: String]? { nil }
     var headers: [String: String]? { 
         ["Authorization": "Bearer \(authToken)"]
     }
@@ -78,7 +78,12 @@ The main client class for making network requests:
 
 ```swift
 public struct APIClient {
-    public init(baseURL: URL, urlSession: URLSession = URLSession.shared)
+    public init(
+        baseURL: URL,
+        urlSession: URLSession = URLSession.shared,
+        decoder: JSONDecoder = JSONDecoder(),
+        useSnakeCaseConversion: Bool = true
+    )
     public func sendRequest<T: Decodable>(_ specification: APISpecification) async throws -> T
 }
 ```
@@ -92,6 +97,7 @@ protocol APISpecification {
     var endpoint: String { get }
     var method: HttpMethod { get }
     var headers: [String: String]? { get }
+    var queryParameters: [String: String]? { get }
     var body: Data? { get }
 }
 ```
@@ -137,6 +143,7 @@ struct GetUsersSpec: APIClient.APISpecification {
     var headers: [String: String]? { 
         ["Accept": "application/json"]
     }
+    var queryParameters: [String: String]? { nil }
     var body: Data? { nil }
 }
 
@@ -157,6 +164,7 @@ struct CreateUserSpec: APIClient.APISpecification {
             "Authorization": "Bearer \(authToken)"
         ]
     }
+    var queryParameters: [String: String]? { nil }
     var body: Data? {
         try? JSONEncoder().encode(user)
     }
@@ -190,7 +198,6 @@ customDecoder.dateDecodingStrategy = .iso8601
 
 let client = APIClient(baseURL: baseURL, decoder: customDecoder)
 ```
-> :warning: .convertFromSnakeCase decoding strategy is used by default!
 
 ## Requirements
 
