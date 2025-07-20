@@ -175,25 +175,20 @@ public struct APIClient: Sendable {
     /// - Returns: The fully constructed URL for the request
     /// - Throws: `NetworkError.invalidURL` if the URL cannot be constructed
     private func constructURL(from specification: APISpecification) throws(NetworkError) -> URL {
-        guard let baseWithEndpoint = URL(string: specification.endpoint, relativeTo: baseURL) else {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
             throw NetworkError.invalidURL
         }
         
-        if let queryParameters = specification.queryParameters, !queryParameters.isEmpty {
-            guard var components = URLComponents(url: baseWithEndpoint, resolvingAgainstBaseURL: true) else {
-                throw NetworkError.invalidURL
-            }
-            
-            components.queryItems = queryParameters.map { URLQueryItem(name: $0.key, value: $0.value) }
-            
-            guard let finalURL = components.url else {
-                throw NetworkError.invalidURL
-            }
-            
-            return finalURL
-        }
+        components.path += specification.endpoint
         
-        return baseWithEndpoint
+        if let queryParameters = specification.queryParameters, !queryParameters.isEmpty {
+            components.queryItems = queryParameters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        guard let finalURL = components.url else {
+            throw NetworkError.invalidURL
+        }
+
+        return finalURL
     }
 
     /// Validates the HTTP response status and type.
