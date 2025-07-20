@@ -65,30 +65,41 @@ public struct APIClient: Sendable {
     ///   - baseURL: The base URL for all API requests. Endpoint paths will be appended to this URL.
     ///   - urlSession: The URL session for network requests. Defaults to `URLSession.shared`.
     ///   - decoder: The JSON decoder for responses. Defaults to a new `JSONDecoder` with snake_case conversion.
+    ///   - useSnakeCaseConversion: Whether to automatically convert snake_case keys to camelCase. Defaults to `true`.
     ///
     /// ## Example
     /// ```swift
-    /// // Basic initialization
+    /// // Basic initialization with snake_case conversion
     /// let client = APIClient(baseURL: URL(string: "https://api.example.com")!)
     ///
-    /// // Custom configuration
+    /// // Disable snake_case conversion
+    /// let client = APIClient(
+    ///     baseURL: baseURL,
+    ///     useSnakeCaseConversion: false
+    /// )
+    ///
+    /// // Custom decoder with snake_case conversion
     /// let customDecoder = JSONDecoder()
     /// customDecoder.dateDecodingStrategy = .iso8601
     /// let client = APIClient(
     ///     baseURL: baseURL,
-    ///     urlSession: .shared,
-    ///     decoder: customDecoder
+    ///     decoder: customDecoder,
+    ///     useSnakeCaseConversion: true
     /// )
     /// ```
     public init(
         baseURL: URL,
         urlSession: URLSession = URLSession.shared,
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
+        useSnakeCaseConversion: Bool = true
     ) {
         self.baseURL = baseURL
         self.urlSession = urlSession
         self.decoder = decoder
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        
+        if useSnakeCaseConversion {
+            self.decoder.keyDecodingStrategy = .convertFromSnakeCase
+        }
     }
 
     /// Executes an API request and returns the decoded response.
